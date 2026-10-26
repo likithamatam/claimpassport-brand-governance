@@ -1,0 +1,6 @@
+{
+  "name": "Claim Passport - Brand Governance & Content Verification",
+  "description": "AI-powered brand governance and content verification platform that proves every claim against approved living facts and brand guidelines before publication.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
