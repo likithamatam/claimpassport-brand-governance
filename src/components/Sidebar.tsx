@@ -67,9 +67,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-rose-100 text-rose-700 font-bold',
     },
     {
+      id: 'documents',
+      label: 'Source Documents',
+      icon: Database,
+      badge: 'Passages',
+      badgeColor: 'bg-indigo-100 text-indigo-700',
+    },
+    {
+      id: 'analytics',
+      label: 'Analytics',
+      icon: TrendingUp,
+      badge: 'Real Events',
+      badgeColor: 'bg-emerald-100 text-emerald-800 font-bold',
+    },
+    {
       id: 'insights',
       label: 'Guideline Health',
-      icon: TrendingUp,
+      icon: BookOpenCheck,
       badge: null,
     },
     {

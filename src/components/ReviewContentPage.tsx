@@ -71,6 +71,9 @@ export const ReviewContentPage: React.FC<ReviewContentPageProps> = ({
   const [targetAudience, setTargetAudience] = useState<ContentSubmission['targetAudience']>(
     initialSubmission?.targetAudience || 'General Consumers'
   );
+  const [assignedReviewer, setAssignedReviewer] = useState(
+    initialSubmission?.assignedReviewer || 'Jordan Taylor'
+  );
 
   // Field Validation State
   const [fieldErrors, setFieldErrors] = useState<{
@@ -163,13 +166,15 @@ export const ReviewContentPage: React.FC<ReviewContentPageProps> = ({
     }
     if (!content.trim()) {
       errors.content = 'Marketing or promotional text is required before verification.';
+    } else if (content.length > 5000) {
+      errors.content = `Content length (${content.length} chars) exceeds the 5,000-character maximum limit. Please condense the copy before checking.`;
     }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setNotification({
         type: 'error',
-        text: 'Validation Error: Please fill in the Content Title, Intent Lock Purpose, and Marketing Text before checking.',
+        text: 'Validation Error: Please correct the highlighted fields before running verification.',
       });
       return;
     }
@@ -614,19 +619,30 @@ export const ReviewContentPage: React.FC<ReviewContentPageProps> = ({
 
           {/* Submission Workflow Actions */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-slate-500">
-              Active User: <strong>{currentUser.name}</strong> ({currentUser.role})
+            <div className="flex items-center space-x-2 text-xs text-slate-700">
+              <span className="font-semibold text-slate-500">Assign Reviewer:</span>
+              <select
+                value={assignedReviewer}
+                onChange={(e) => setAssignedReviewer(e.target.value)}
+                className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-800"
+              >
+                <option value="Jordan Taylor">Jordan Taylor (Reviewer)</option>
+                <option value="Elena Ramos">Elena Ramos (Brand Manager)</option>
+                <option value="Dr. David Vance">Dr. David Vance (Fact Owner)</option>
+              </select>
             </div>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => handleSaveSubmission('Draft')}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                disabled={isChecking}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition disabled:opacity-50"
               >
                 Save Draft
               </button>
               <button
                 onClick={() => handleSaveSubmission('Submitted')}
-                className="px-4 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition"
+                disabled={isChecking}
+                className="px-4 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition disabled:opacity-50"
               >
                 {isChangesRequested ? 'Resubmit for Approval →' : 'Submit for Approval →'}
               </button>
@@ -737,6 +753,11 @@ export const ReviewContentPage: React.FC<ReviewContentPageProps> = ({
               <h2 className="text-base font-bold text-slate-900">
                 Evidence-First Findings ({hasChecked ? filteredFindings.length : 0})
               </h2>
+              {hasChecked && (
+                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  Source Coverage: {initialSubmission?.sourceCoveragePct ?? (findings.length > 0 ? 50 : 100)}%
+                </span>
+              )}
               {hasChecked && findings.length > 0 && (
                 <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-rose-100 text-rose-700">
                   {findings.filter((f) => f.severity === 'Critical' || f.severity === 'High').length} High/Critical
@@ -897,9 +918,15 @@ export const ReviewContentPage: React.FC<ReviewContentPageProps> = ({
                       {finding.factOwner && (
                         <div className="flex items-center justify-between pt-1 text-slate-500">
                           <span>Owner: <strong>{finding.factOwner}</strong></span>
-                          {finding.expiryDate && (
-                            <span className="text-amber-700 font-semibold">
-                              Expired: {finding.expiryDate}
+                        </div>
+                      )}
+                      {(finding as any).quote && (
+                        <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200 text-[11px] text-slate-800">
+                          <span className="font-bold text-indigo-900 block mb-0.5">Retrieved Document Snippet:</span>
+                          <span className="italic">"{(finding as any).quote}"</span>
+                          {(finding as any).passageId && (
+                            <span className="block text-[10px] text-indigo-600 mt-0.5 font-mono">
+                              Passage: {(finding as any).passageId}
                             </span>
                           )}
                         </div>

@@ -114,6 +114,8 @@ export interface ContentSubmission {
     verifiedFactsCount: number;
   };
   comments?: ReviewComment[];
+  contentVersion?: number;
+  sourceCoveragePct?: number;
 }
 
 export interface ReviewComment {

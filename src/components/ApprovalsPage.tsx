@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { ContentSubmission, User as UserType } from '../types';
 import { updateSubmissionStatus } from '../services/storage';
+import { recordDecisionApi, fetchSubmissionDecisionsApi } from '../services/api';
 
 interface ApprovalsPageProps {
   submissions: ContentSubmission[];
@@ -41,15 +42,25 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
   );
 
   const [commentText, setCommentText] = useState('');
-  const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Approved'>('Pending');
+  const [activeTab, setActiveTab] = useState<'All' | 'AssignedToMe' | 'Pending' | 'Approved'>('Pending');
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [decisionHistory, setDecisionHistory] = useState<any[]>([]);
   const [actionNotification, setActionNotification] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
 
   const canApprove = currentUser.role === 'Brand Manager' || currentUser.role === 'Reviewer';
+
+  const loadDecisionHistory = async (subId: string) => {
+    try {
+      const history = await fetchSubmissionDecisionsApi(subId);
+      setDecisionHistory(history);
+    } catch {
+      setDecisionHistory([]);
+    }
+  };
 
   // Synchronize selectedSub whenever submissions prop updates
   useEffect(() => {
@@ -58,51 +69,35 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
       if (refreshed) {
         setSelectedSub(refreshed);
       }
+      loadDecisionHistory(selectedSub.id);
     } else if (submissions.length > 0) {
-      setSelectedSub(
-        submissions.find((s) => s.status === 'Under Review' || s.status === 'Submitted' || s.status === 'Changes Requested') || submissions[0]
-      );
+      const initial = submissions.find((s) => s.status === 'Under Review' || s.status === 'Submitted' || s.status === 'Changes Requested') || submissions[0];
+      setSelectedSub(initial);
+      if (initial) loadDecisionHistory(initial.id);
     }
   }, [submissions]);
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!selectedSub) return;
-    if (!canApprove) {
-      setActionNotification({
-        type: 'error',
-        text: `Approval Denied: Your active role (${currentUser.role}) does not have governance authority to approve publications. Please switch to a Reviewer or Brand Manager in the top-right header.`,
-      });
-      return;
-    }
 
     setIsProcessing(true);
-    try {
-      const certHash = `CP-CERT-${Math.floor(10000 + Math.random() * 90000)}-${Date.now().toString().slice(-4)}`;
-      const stamp = {
-        approvedBy: currentUser.name,
-        role: currentUser.role,
-        timestamp: new Date().toISOString(),
-        certificateHash: certHash,
-        verifiedFactsCount: Math.max(1, selectedSub.findings.filter((f) => f.actionStatus === 'Accepted').length),
-      };
+    setActionNotification(null);
 
-      const updated = updateSubmissionStatus(
+    try {
+      const res = await recordDecisionApi(
         selectedSub.id,
         'Approved',
-        currentUser,
-        stamp,
         commentText.trim() || 'Approved for publication under verified Claim Passport standards.'
       );
 
-      if (updated) {
-        setSelectedSub(updated);
-      }
+      setSelectedSub(res.submission);
       setCommentText('');
       setFeedbackError(null);
+      await loadDecisionHistory(selectedSub.id);
       onRefreshSubmissions();
       setActionNotification({
         type: 'success',
-        text: `Content formally approved! Governance Certificate ${certHash} issued.`,
+        text: `Content formally approved! Governance Certificate ${res.decision?.certificateHash || 'CP-CERT'} issued and recorded in immutable ledger.`,
       });
     } catch (err: any) {
       setActionNotification({
@@ -114,7 +109,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
     }
   };
 
-  const handleRequestChanges = () => {
+  const handleRequestChanges = async () => {
     if (!selectedSub) return;
 
     // Requirement 3: Require reviewer feedback before requesting changes
@@ -125,28 +120,23 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
 
     setFeedbackError(null);
     setIsProcessing(true);
+    setActionNotification(null);
 
     try {
-      // Requirement 4 & 5: update status to "Changes Requested" and save comment with ID, reviewer, timestamp
-      const updated = updateSubmissionStatus(
+      const res = await recordDecisionApi(
         selectedSub.id,
         'Changes Requested',
-        currentUser,
-        undefined,
         commentText.trim()
       );
 
-      // Requirement 6: Update selected submission and submission queue immediately
-      if (updated) {
-        setSelectedSub(updated);
-      }
+      setSelectedSub(res.submission);
       setCommentText('');
+      await loadDecisionHistory(selectedSub.id);
       onRefreshSubmissions();
 
-      // Requirement 8: Clear success message
       setActionNotification({
         type: 'success',
-        text: `Changes requested successfully for ${selectedSub.id}. Workflow status updated to "Changes Requested" and reviewer feedback logged.`,
+        text: `Changes requested successfully for ${selectedSub.id}. Workflow status updated to "Changes Requested" and versioned decision logged.`,
       });
     } catch (err: any) {
       setActionNotification({
@@ -190,6 +180,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
   };
 
   const filtered = submissions.filter((s) => {
+    if (activeTab === 'AssignedToMe') return s.assignedReviewer === currentUser.name;
     if (activeTab === 'Pending') return s.status === 'Submitted' || s.status === 'Under Review' || s.status === 'Changes Requested';
     if (activeTab === 'Approved') return s.status === 'Approved';
     return true;
@@ -214,18 +205,23 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
         </div>
 
         {/* Tab Filters */}
-        <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl">
-          {(['Pending', 'Approved', 'All'] as const).map((tab) => (
+        <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl">
+          {[
+            { id: 'Pending', label: 'Pending' },
+            { id: 'AssignedToMe', label: 'Assigned to Me' },
+            { id: 'Approved', label: 'Approved' },
+            { id: 'All', label: 'All' },
+          ].map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === tab
+                activeTab === tab.id
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -558,6 +554,63 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Immutable Versioned Decision History Timeline */}
+                <div className="space-y-3 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                      Decision History Timeline ({decisionHistory.length} Versions)
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Immutable SQLite Ledger</span>
+                  </div>
+
+                  {decisionHistory.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No formal version decisions recorded yet for this submission.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {decisionHistory.map((d) => (
+                        <div
+                          key={d.id}
+                          className="p-3 rounded-xl border border-slate-200 bg-slate-50/80 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900">
+                              Version #{d.versionNumber}:{' '}
+                              <span
+                                className={`font-semibold ${
+                                  d.decision === 'Approved'
+                                    ? 'text-emerald-700'
+                                    : d.decision === 'Changes Requested'
+                                    ? 'text-amber-700'
+                                    : 'text-rose-700'
+                                }`}
+                              >
+                                {d.decision}
+                              </span>
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {new Date(d.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 flex items-center space-x-2">
+                            <span>Actor: <strong>{d.actor?.name || d.actor_name}</strong> ({d.actor?.role || d.actor_role})</span>
+                            <span>• Content v{d.contentVersion}</span>
+                            {d.certificateHash && (
+                              <span className="text-emerald-700 font-mono text-[10px] bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-200">
+                                {d.certificateHash}
+                              </span>
+                            )}
+                          </div>
+                          {d.reason && (
+                            <p className="text-slate-700 italic bg-white p-2 rounded-lg border border-slate-200 mt-1">
+                              "{d.reason}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

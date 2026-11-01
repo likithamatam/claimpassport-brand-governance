@@ -15,7 +15,13 @@ import { GuidelinesPage } from './components/GuidelinesPage';
 import { ApprovalsPage } from './components/ApprovalsPage';
 import { GuidelineHealthPage } from './components/GuidelineHealthPage';
 import { AuditLogsPage } from './components/AuditLogsPage';
+import { SourceDocumentsPage } from './components/SourceDocumentsPage';
+import { AnalyticsPage } from './components/AnalyticsPage';
 import { PythonStackModal } from './components/PythonStackModal';
+import { AuthModal } from './components/AuthModal';
+import { NotificationsModal } from './components/NotificationsModal';
+import { FirstRunGuideModal } from './components/FirstRunGuideModal';
+import { AIDisclosureModal } from './components/AIDisclosureModal';
 import {
   getCurrentUser,
   setCurrentUser,
@@ -24,6 +30,15 @@ import {
   getGuidelines,
   getAuditLogs,
 } from './services/storage';
+import {
+  getMeApi,
+  logoutApi,
+  fetchSubmissionsApi,
+  fetchFactsApi,
+  fetchGuidelinesApi,
+  fetchNotificationsApi,
+  getStoredUser,
+} from './services/api';
 import {
   User,
   ContentSubmission,
@@ -35,28 +50,69 @@ import { isFactExpired } from './services/rulesEngine';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('landing');
-  const [currentUser, setCurrentUserState] = useState<User>(getCurrentUser());
+  const [currentUser, setCurrentUserState] = useState<User>(getStoredUser() || getCurrentUser());
   const [submissions, setSubmissions] = useState<ContentSubmission[]>(getSubmissions());
   const [facts, setFacts] = useState<LivingFact[]>(getFacts());
   const [guidelines, setGuidelines] = useState<BrandGuideline[]>(getGuidelines());
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(getAuditLogs());
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
 
   // Active submission passed to review workbench
   const [activeSubmission, setActiveSubmission] = useState<ContentSubmission | null>(null);
 
-  // Python stack deliverables modal
+  // Modals state
   const [pythonModalOpen, setPythonModalOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const [firstRunGuideOpen, setFirstRunGuideOpen] = useState(false);
+  const [aiDisclosureOpen, setAiDisclosureOpen] = useState(false);
 
-  const refreshAllData = () => {
-    setSubmissions(getSubmissions());
-    setFacts(getFacts());
-    setGuidelines(getGuidelines());
-    setAuditLogs(getAuditLogs());
+  // Refresh all data from persistent SQLite API
+  const refreshAllData = async () => {
+    try {
+      const [subs, fcts, guides, notifs] = await Promise.all([
+        fetchSubmissionsApi().catch(() => getSubmissions()),
+        fetchFactsApi().catch(() => getFacts()),
+        fetchGuidelinesApi().catch(() => getGuidelines()),
+        fetchNotificationsApi().catch(() => ({ unreadCount: 0, notifications: [] })),
+      ]);
+      setSubmissions(subs);
+      setFacts(fcts);
+      setGuidelines(guides);
+      setNotifications(notifs.notifications || []);
+      setUnreadNotificationsCount(notifs.unreadCount || 0);
+      setAuditLogs(getAuditLogs());
+    } catch {
+      setSubmissions(getSubmissions());
+      setFacts(getFacts());
+      setGuidelines(getGuidelines());
+      setAuditLogs(getAuditLogs());
+    }
   };
+
+  useEffect(() => {
+    // Check authenticated session
+    getMeApi().then((user) => {
+      if (user) {
+        setCurrentUserState(user);
+        setCurrentUser(user);
+      }
+    });
+
+    refreshAllData();
+  }, []);
 
   const handleUserChange = (user: User) => {
     setCurrentUserState(user);
     setCurrentUser(user);
+    refreshAllData();
+  };
+
+  const handleLogout = async () => {
+    await logoutApi();
+    const fallbackUser = getCurrentUser();
+    setCurrentUserState(fallbackUser);
   };
 
   const handleSelectSubmission = (sub: ContentSubmission) => {
@@ -65,18 +121,18 @@ export default function App() {
   };
 
   const handleLoadRequiredDemoScenario = () => {
-    // Select or create the required demo scenario
-    const demoSub = submissions.find((s) => s.id === 'SUB-001') || {
-      id: 'SUB-001',
-      title: 'Hydration Launch Social Copy (Required Hackathon Demo)',
+    const demoSub = submissions.find((s) => s.id === 'SUB-4053' || s.id === 'SUB-001') || {
+      id: 'SUB-4053',
+      title: 'Hydration Launch Campaign Draft (SUB-4053)',
       content: 'Trusted by 10,000+ customers. Our new bottle is 100% safe!',
       intent: 'Announce new hydration bottle launch highlighting customer adoption and safety assurance',
       contentType: 'Social Copy' as const,
       targetAudience: 'General Consumers' as const,
-      status: 'Under Review' as const,
+      status: 'Submitted' as const,
       createdBy: currentUser,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      assignedReviewer: 'Jordan Taylor',
       findings: [],
       suggestedRevision: 'Meet our BPA-free bottle, designed for everyday use.',
       intentPreserved: true,
@@ -89,7 +145,7 @@ export default function App() {
 
   // Calculations for badges
   const pendingReviewsCount = submissions.filter(
-    (s) => s.status === 'Submitted' || s.status === 'Under Review'
+    (s) => s.status === 'Submitted' || s.status === 'Under Review' || s.status === 'Changes Requested'
   ).length;
 
   const expiredFactsCount = facts.filter((f) => isFactExpired(f.expiryDate)).length;
@@ -103,6 +159,12 @@ export default function App() {
         onNavigate={setCurrentView}
         onOpenPythonStack={() => setPythonModalOpen(true)}
         onLoadDemoScenario={handleLoadRequiredDemoScenario}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenNotifications={() => setNotificationsModalOpen(true)}
+        onOpenGuide={() => setFirstRunGuideOpen(true)}
+        onOpenAIDisclosure={() => setAiDisclosureOpen(true)}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main View Body */}
@@ -184,6 +246,17 @@ export default function App() {
               />
             )}
 
+            {currentView === 'documents' && (
+              <SourceDocumentsPage currentUser={currentUser} />
+            )}
+
+            {currentView === 'analytics' && (
+              <AnalyticsPage
+                currentUser={currentUser}
+                onRefreshAll={refreshAllData}
+              />
+            )}
+
             {currentView === 'insights' && (
               <GuidelineHealthPage
                 guidelines={guidelines}
@@ -203,6 +276,43 @@ export default function App() {
       <PythonStackModal
         isOpen={pythonModalOpen}
         onClose={() => setPythonModalOpen(false)}
+      />
+
+      {/* Auth & Demo Accounts Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        currentUser={currentUser}
+        onAuthSuccess={handleUserChange}
+      />
+
+      {/* In-App Notifications Modal */}
+      <NotificationsModal
+        isOpen={notificationsModalOpen}
+        onClose={() => setNotificationsModalOpen(false)}
+        notifications={notifications}
+        onRefresh={refreshAllData}
+        onNavigateSubmission={(subId) => {
+          setNotificationsModalOpen(false);
+          const found = submissions.find((s) => s.id === subId);
+          if (found) handleSelectSubmission(found);
+        }}
+      />
+
+      {/* First-Run Judge Guide Modal */}
+      <FirstRunGuideModal
+        isOpen={firstRunGuideOpen}
+        onClose={() => setFirstRunGuideOpen(false)}
+        onLaunchDemoScenario={() => {
+          handleLoadRequiredDemoScenario();
+          setCurrentView('review');
+        }}
+      />
+
+      {/* AI & Data Governance Disclosure Modal */}
+      <AIDisclosureModal
+        isOpen={aiDisclosureOpen}
+        onClose={() => setAiDisclosureOpen(false)}
       />
     </div>
   );

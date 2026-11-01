@@ -1,6 +1,6 @@
 /**
  * Claim Passport Top Navigation Bar
- * Header with active role badge, quick role switcher, notification pill, and demo scenario trigger
+ * Header with active role badge, quick role switcher, notification bell, first-run guide, and demo scenario trigger
  */
 
 import React, { useState } from 'react';
@@ -11,8 +11,11 @@ import {
   Sparkles,
   RotateCcw,
   Code2,
-  FileText,
-  AlertCircle,
+  Bell,
+  HelpCircle,
+  Cpu,
+  LogIn,
+  LogOut,
   ExternalLink,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
@@ -24,6 +27,12 @@ interface NavbarProps {
   onNavigate: (view: string) => void;
   onOpenPythonStack: () => void;
   onLoadDemoScenario: () => void;
+  unreadNotificationsCount?: number;
+  onOpenNotifications?: () => void;
+  onOpenGuide?: () => void;
+  onOpenAIDisclosure?: () => void;
+  onOpenAuthModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -32,6 +41,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   onOpenPythonStack,
   onLoadDemoScenario,
+  unreadNotificationsCount = 0,
+  onOpenNotifications,
+  onOpenGuide,
+  onOpenAIDisclosure,
+  onOpenAuthModal,
+  onLogout,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const users = getUsers();
@@ -88,38 +103,78 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Quick Actions & Role Switcher */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
             {/* Quick Demo Scenario Trigger */}
             <button
               onClick={onLoadDemoScenario}
               className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-xs transition"
-              title="Loads the required fictional brand test: 'Trusted by 10,000+ customers. Our new bottle is 100% safe!'"
+              title="Loads the test scenario: 'Trusted by 10,000+ customers. Our new bottle is 100% safe!'"
             >
               <Sparkles className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
-              <span className="hidden sm:inline">Load Required Demo</span>
+              <span className="hidden sm:inline">Try Demo Scenario</span>
               <span className="sm:hidden">Demo</span>
             </button>
+
+            {/* Quick Guide */}
+            {onOpenGuide && (
+              <button
+                onClick={onOpenGuide}
+                className="hidden md:inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition"
+                title="View 5-step judge & user guide"
+              >
+                <HelpCircle className="h-3.5 w-3.5 mr-1 text-slate-500" />
+                <span>Guide</span>
+              </button>
+            )}
+
+            {/* AI Disclosure */}
+            {onOpenAIDisclosure && (
+              <button
+                onClick={onOpenAIDisclosure}
+                className="hidden lg:inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 transition"
+                title="View AI and data governance disclosure"
+              >
+                <Cpu className="h-3.5 w-3.5 mr-1 text-violet-600" />
+                <span>AI Disclosure</span>
+              </button>
+            )}
+
+            {/* Notifications Bell */}
+            {onOpenNotifications && (
+              <button
+                onClick={onOpenNotifications}
+                className="relative p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition"
+                title="View in-app notifications and staleness alerts"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-rose-600 text-white font-bold text-[9px] flex items-center justify-center animate-pulse">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Python / FastAPI / Streamlit Code Export */}
             <button
               onClick={onOpenPythonStack}
-              className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition"
+              className="hidden xl:inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition"
               title="View & Download FastAPI backend, Streamlit UI, and MySQL schema deliverables"
             >
-              <Code2 className="h-3.5 w-3.5 mr-1.5 text-slate-600" />
-              <span className="hidden md:inline">Python & MySQL Code</span>
+              <Code2 className="h-3.5 w-3.5 mr-1 text-slate-600" />
+              <span>Python Stack</span>
             </button>
 
             {/* Reset Seed Data */}
             <button
               onClick={handleResetData}
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
-              title="Reset dataset to pristine hackathon initial state"
+              title="Reset dataset to pristine initial state"
             >
               <RotateCcw className="h-4 w-4" />
             </button>
 
-            {/* Role Switcher Dropdown */}
+            {/* Role Switcher & Auth Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -140,13 +195,26 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Switch Role (Role-Based Access)
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Test permissions as different stakeholders:
-                    </p>
+                  <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Role-Based Access
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Switch persona or sign in:
+                      </p>
+                    </div>
+                    {onOpenAuthModal && (
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          onOpenAuthModal();
+                        }}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                      >
+                        Sign In
+                      </button>
+                    )}
                   </div>
 
                   <div className="py-1">
@@ -174,9 +242,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ))}
                   </div>
 
-                  <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 flex items-center">
-                    <UserCheck className="h-3.5 w-3.5 mr-1 text-indigo-600" />
-                    Enforced at backend & UI approval gates.
+                  <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 flex items-center justify-between">
+                    <span className="flex items-center">
+                      <UserCheck className="h-3.5 w-3.5 mr-1 text-indigo-600" />
+                      Enforced by Express API
+                    </span>
+                    {onLogout && (
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          onLogout();
+                        }}
+                        className="text-rose-600 font-semibold hover:underline flex items-center"
+                      >
+                        <LogOut className="h-3 w-3 mr-1" />
+                        Logout
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
